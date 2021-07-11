@@ -1,0 +1,111 @@
+
+
+select location, date, total_cases, new_cases, total_deaths, population
+from ['Covid_deaths']
+where location = 'jersey'
+order by 1,2
+
+-- total cases vs total deaths
+
+select location, date, total_cases, total_deaths, (total_deaths/total_cases)*100 as death_precentage
+from ['Covid_deaths']
+where location = 'israel'
+order by 1,2
+
+-- total cases vs population
+
+select location, date, total_cases, population, (total_cases/population)*100 as precentage_in_population
+from ['Covid_deaths']
+where location = 'israel'
+order by 1,2
+
+
+
+-- countries with highst infection rate compared to population
+
+select location, population, max(total_cases) as highes_infaction_count ,max((total_cases/population))*100 as precentage_population_infected
+from ['Covid_deaths']
+where continent is not null
+group by location, population
+order by precentage_population_infected desc
+
+-- countries with highest death rate
+
+select location, max(cast(total_deaths as int)) as deaths_per_country
+from ['Covid_deaths']
+where continent is not null -- in the location they count continent as well, we don't want to see that. 
+group by location
+order by deaths_per_country desc
+
+
+
+-- Global numbers per day
+
+select date, sum(new_cases) as Global_new_cases, sum(cast(new_deaths as int)) as Global_new_deaths
+from ['Covid_deaths']
+where continent is not null 
+group by date
+order by 1
+
+-- total of people vaccinated per date in country
+
+select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, sum(convert(int,vac.new_vaccinations)) over (partition by dea.location order by dea.location, dea.date) as total_vac_per_date
+from CovidProject..['Covid_deaths'] dea
+join CovidProject..Covid_vaccinations vac
+	on dea.location = vac.location 
+	and dea.date = vac.date
+where dea.continent is not null 
+order by 2,3
+
+
+-- usege of total_vac_per_date needs a temp table or a CTE to see the percentage of population that is vaccinated
+
+--with Pop_VS_Vac (continant, location, date, population, new_vaccination, total_vac_per_date)
+--as
+--(
+--select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+--, sum(convert(int,vac.new_vaccinations)) over (partition by dea.location order by dea.location, dea.date) as total_vac_per_date
+--from CovidProject..['Covid_deaths'] dea
+--join CovidProject..Covid_vaccinations vac
+--	on dea.location = vac.location 
+--	and dea.date = vac.date
+--where dea.continent is not null 
+--)
+--select * from Pop_VS_Vac
+
+-- I prefer the temp table so I don't have to run the CTE everytime I want to use it.
+
+--drop table if exists #temp_covid19 **just in case I need to chane something in the temp table
+create table #temp_covid19 (
+continant nvarchar (255),
+location nvarchar (255), 
+date datetime,
+population float,
+new_vaccination nvarchar(255),
+total_vac_per_date int) 
+
+
+
+insert into #temp_covid19 (continant, location, date, population, new_vaccination, total_vac_per_date)
+select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, sum(convert(int,vac.new_vaccinations)) over (partition by dea.location order by dea.location, dea.date) as total_vac_per_date
+from CovidProject..['Covid_deaths'] dea
+join CovidProject..Covid_vaccinations vac
+	on dea.location = vac.location 
+	and dea.date = vac.date
+where dea.continent is not null
+
+-- we should notice that we don't have
+
+select *, ((total_vac_per_date/population)*100)/2 as percentage_vac
+from #temp_covid19
+where location like '%state%'
+order by 2,3
+
+create view
+precentage_population_infected as
+select location, population, max(total_cases) as highes_infaction_count ,max((total_cases/population))*100 as precentage_population_infected
+from ['Covid_deaths']
+where continent is not null
+group by location, population
